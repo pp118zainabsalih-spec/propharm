@@ -1,0 +1,1132 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" style="background:#F8FAF7;">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Body Systems Practice Trainer</title>
+<meta name="color-scheme" content="light only">
+<meta name="theme-color" content="#F8FAF7">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Markazi+Text:wght@500;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<!-- Firebase SDK -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getFirestore, doc, getDoc, setDoc, collection, getDocs, query, where } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  /* ============================================================
+     🔧 ضعي هنا إعدادات مشروع Firebase الخاص بك
+     ستجدينها في: Firebase Console → Project Settings → Your apps → Config
+  ============================================================ */
+  const firebaseConfig = {
+    apiKey:            "AIzaSyB99sdB4o49UbiTU1-HH9miFLCQn8NYFXc",
+    authDomain:        "propharm-4e839.firebaseapp.com",
+    projectId:         "propharm-4e839",
+    storageBucket:     "propharm-4e839.firebasestorage.app",
+    messagingSenderId: "1093701515586",
+    appId:             "1:1093701515586:web:13ca0f7b2b3a46e958f0db"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db  = getFirestore(app);
+
+  /* ============================================================
+     طبقة التخزين — تحاكي واجهة window.storage القديمة
+     الجدول "answers"  → سجلات الإجابات  (STORAGE_PREFIX)
+     الجدول "progress" → تقدّم كل طالب   (PROGRESS_PREFIX)
+  ============================================================ */
+
+  function collectionFromKey(key) {
+    if (key.startsWith("systrainer:prog:")) return "progress";
+    return "answers";
+  }
+
+  function docIdFromKey(key) {
+    // نحوّل الشرطتين والأحرف غير المسموح بها إلى شرطة سفلية
+    return key.replace(/[^a-zA-Z0-9\u0600-\u06FF|.\-_]/g, "_").slice(0, 400);
+  }
+
+  window.storage = {
+
+    /* قراءة سجل واحد */
+    async get(key /*, shared – مُتجاهَلة هنا */) {
+      try {
+        const col = collectionFromKey(key);
+        const id  = docIdFromKey(key);
+        const snap = await getDoc(doc(db, col, id));
+        if (!snap.exists()) return null;
+        return { key, value: snap.data().value };
+      } catch (e) {
+        console.error("storage.get error", e);
+        return null;
+      }
+    },
+
+    /* كتابة سجل */
+    async set(key, value /*, shared */) {
+      try {
+        const col = collectionFromKey(key);
+        const id  = docIdFromKey(key);
+        await setDoc(doc(db, col, id), { key, value, ts: Date.now() });
+        return { key, value };
+      } catch (e) {
+        console.error("storage.set error", e);
+        return null;
+      }
+    },
+
+    /* قراءة كل المفاتيح التي تبدأ بـ prefix */
+    async list(prefix /*, shared */) {
+      try {
+        const col  = collectionFromKey(prefix);
+        const snap = await getDocs(collection(db, col));
+        const keys = [];
+        snap.forEach(d => {
+          const k = d.data().key || d.id;
+          if (k.startsWith(prefix)) keys.push(k);
+        });
+        return { keys };
+      } catch (e) {
+        console.error("storage.list error", e);
+        return { keys: [] };
+      }
+    },
+
+    /* حذف سجل (غير مستخدم في هذه الأداة لكن مكتمل للشمولية) */
+    async delete(key /*, shared */) {
+      try {
+        const col = collectionFromKey(key);
+        const id  = docIdFromKey(key);
+        const { deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        await deleteDoc(doc(db, col, id));
+        return { key, deleted: true };
+      } catch (e) {
+        console.error("storage.delete error", e);
+        return null;
+      }
+    }
+  };
+
+  console.log("✅ Firebase storage layer ready");
+</script>
+<style>
+  :root{
+    --ink:#25352F; --counter:#F8FAF7; --panel:#FFFFFF;
+    --pharmacy-green:#1F8A63; --pharmacy-green-deep:#146650;
+    --sage:#E6F3EA; --urgency:#E06B2C; --urgency-soft:#FCEADC;
+    --success:#1F8A63; --success-soft:#E6F5EC;
+    --trap:#D14B4B; --trap-soft:#FBE9E7;
+    --neutral:#5B7C8D; --neutral-soft:#E8F0F4;
+    --gray:#8A9691; --gray-soft:#EEF1F0;
+    --line:rgba(37,53,47,0.12);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:#F8FAF7 !important;color-scheme:light;min-height:100%;}
+  body{
+    min-height:100vh;
+    background:radial-gradient(1200px 600px at 15% -10%, rgba(31,138,99,0.08), transparent 60%), #F8FAF7 !important;
+    color:var(--ink); font-family:'IBM Plex Sans Arabic', sans-serif;
+    display:flex; flex-direction:column; align-items:center; padding:26px 16px 60px;
+  }
+  .stage{width:100%;max-width:640px;}
+  .top-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;font-family:'Space Mono',monospace;font-size:11.5px;letter-spacing:.03em;color:var(--pharmacy-green-deep);opacity:.8;}
+  .top-bar .brand{direction:ltr;}
+  .link-btn{background:none;border:none;color:var(--pharmacy-green-deep);font-family:'IBM Plex Sans Arabic';font-size:12.5px;text-decoration:underline;cursor:pointer;opacity:.85;padding:0;}
+  h1{font-family:'Markazi Text',serif;font-weight:700;font-size:clamp(27px,6vw,38px);margin:0 0 4px;color:var(--pharmacy-green-deep);line-height:1.15;direction:ltr;text-align:right;}
+  h1.ar{direction:rtl;}
+  .sub{font-size:14.5px;opacity:.68;margin:0 0 24px;line-height:1.7;}
+  .screen{display:none;}
+  .screen.active{display:block;animation:fade .35s ease;}
+  @keyframes fade{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px 22px;}
+  .card p{font-size:15px;line-height:1.9;margin:0 0 14px;}
+  .notice{background:var(--sage);border-right:4px solid var(--pharmacy-green);border-radius:8px;padding:16px 18px;margin-bottom:22px;font-size:14px;line-height:1.85;}
+  .notice b{color:var(--pharmacy-green-deep);display:block;margin-bottom:6px;font-size:14.5px;}
+  .field{margin-bottom:16px;}
+  .field label{display:block;font-size:13.5px;font-weight:600;margin-bottom:7px;opacity:.85;}
+  .field input, .field select{width:100%;padding:13px 14px;border-radius:10px;border:1.5px solid var(--line);font-family:'IBM Plex Sans Arabic';font-size:15px;background:#fff;color:var(--ink);}
+  .field input:focus, .field select:focus{outline:2px solid var(--pharmacy-green);border-color:var(--pharmacy-green);}
+  .field .err{color:var(--trap);font-size:12.5px;margin-top:6px;display:none;}
+
+  .toggle-row{display:flex;align-items:center;justify-content:space-between;gap:12px;background:var(--neutral-soft);border-radius:10px;padding:14px 16px;margin-bottom:18px;}
+  .toggle-row .tl{font-size:13.5px;line-height:1.6;}
+  .toggle-row .tl b{color:var(--neutral);}
+  .switch{position:relative;width:52px;height:30px;flex:none;}
+  .switch input{opacity:0;width:0;height:0;}
+  .slider{position:absolute;inset:0;background:#C4CDC9;border-radius:30px;cursor:pointer;transition:.2s;}
+  .slider::before{content:"";position:absolute;width:24px;height:24px;right:3px;top:3px;background:#fff;border-radius:50%;transition:.2s;}
+  .switch input:checked + .slider{background:var(--pharmacy-green);}
+  .switch input:checked + .slider::before{transform:translateX(-22px);}
+
+  .btn-primary{width:100%;background:var(--pharmacy-green);color:#fff;border:none;border-radius:10px;padding:16px;font-family:'IBM Plex Sans Arabic';font-weight:600;font-size:16px;cursor:pointer;transition:background .15s ease,transform .15s ease;}
+  .btn-primary:hover{background:var(--pharmacy-green-deep);transform:translateY(-1px);}
+  .btn-primary:focus-visible{outline:3px solid var(--urgency);outline-offset:2px;}
+  .btn-outline{width:100%;background:transparent;color:var(--pharmacy-green-deep);border:1.5px solid var(--pharmacy-green);border-radius:10px;padding:14px;font-family:'IBM Plex Sans Arabic';font-weight:600;font-size:14.5px;cursor:pointer;margin-top:10px;}
+
+  .head-strip{display:flex;align-items:center;gap:13px;margin-bottom:14px;}
+  .step-badge{font-family:'Space Mono',monospace;font-size:11px;background:var(--sage);color:var(--pharmacy-green-deep);padding:5px 11px;border-radius:20px;white-space:nowrap;}
+  .kind-badge{font-family:'Space Mono',monospace;font-size:10px;padding:4px 9px;border-radius:5px;white-space:nowrap;}
+  .kind-badge.construct{background:var(--neutral-soft);color:var(--neutral);}
+  .kind-badge.dialogue{background:var(--urgency-soft);color:var(--urgency);}
+  .kind-badge.gray{background:var(--gray-soft);color:var(--gray);}
+  .kind-badge.select{background:var(--sage);color:var(--pharmacy-green-deep);}
+  .form-title{font-family:'Markazi Text';font-weight:700;font-size:19px;color:var(--pharmacy-green-deep);}
+
+  .timer-opt{display:flex;align-items:center;gap:9px;margin-bottom:16px;font-size:12.5px;opacity:.7;}
+  .timer-live{font-family:'Space Mono',monospace;font-size:12px;color:var(--urgency);background:var(--urgency-soft);padding:3px 9px;border-radius:5px;display:none;}
+  .timer-live.on{display:inline-block;}
+
+  .progress-dots{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px;}
+  .dot{width:14px;height:4px;border-radius:2px;background:var(--line);}
+  .dot.filled{background:var(--pharmacy-green);}
+
+  .bubble{background:var(--panel);border:1px solid var(--line);border-radius:4px 16px 16px 16px;padding:18px 20px;font-size:16px;line-height:1.9;margin-bottom:18px;box-shadow:0 1px 0 var(--line);}
+  .bubble .who{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.04em;color:var(--urgency);display:block;margin-bottom:8px;}
+  .bubble.reply{border-radius:16px 4px 16px 16px;background:var(--urgency-soft);border-color:var(--urgency);margin-top:4px;}
+  .bubble.reply .who{color:var(--urgency);}
+
+  .prompt-q{font-size:14px;font-weight:600;color:var(--pharmacy-green-deep);margin-bottom:12px;line-height:1.7;}
+
+  .draft-box textarea{width:100%;min-height:120px;padding:14px;border-radius:10px;border:1.5px solid var(--pharmacy-green);font-family:'IBM Plex Sans Arabic';font-size:15px;line-height:1.8;resize:vertical;background:#fff;color:var(--ink);}
+  .draft-box textarea:focus{outline:2px solid var(--pharmacy-green);}
+  .draft-hint{font-size:12.5px;opacity:.62;margin:8px 0 12px;line-height:1.6;}
+
+  .choices{display:flex;flex-direction:column;gap:9px;}
+  .choice{text-align:right;background:var(--panel);border:1.5px solid var(--line);border-radius:10px;padding:15px 17px;font-family:'IBM Plex Sans Arabic';font-size:14.8px;line-height:1.65;cursor:pointer;transition:border-color .15s ease,background .15s ease,transform .1s ease;}
+  .choice:hover:not(:disabled){border-color:var(--pharmacy-green);background:var(--sage);}
+  .choice:active:not(:disabled){transform:scale(.99);}
+  .choice:focus-visible{outline:3px solid var(--urgency);outline-offset:2px;}
+
+  .rev{border-radius:10px;padding:14px 16px;font-size:13.8px;line-height:1.75;border:1.5px solid;}
+  .rev .head{display:flex;align-items:center;gap:8px;margin-bottom:7px;font-weight:700;font-size:13.5px;flex-wrap:wrap;}
+  .rev .tick{font-family:'Space Mono',monospace;font-size:10.5px;padding:2px 7px;border-radius:4px;}
+  .rev.correct{border-color:var(--success);background:var(--success-soft);}
+  .rev.correct .head{color:var(--success);} .rev.correct .tick{background:var(--success);color:#fff;}
+  .rev.weak{border-color:var(--urgency);background:var(--urgency-soft);}
+  .rev.weak .head{color:var(--urgency);} .rev.weak .tick{background:var(--urgency);color:#fff;}
+  .rev.trap{border-color:var(--trap);background:var(--trap-soft);}
+  .rev.trap .head{color:var(--trap);} .rev.trap .tick{background:var(--trap);color:#fff;}
+  .rev.chosen{box-shadow:0 0 0 3px rgba(31,138,99,.18);}
+  .rev .mine{font-family:'Space Mono',monospace;font-size:10px;background:var(--pharmacy-green);color:#fff;padding:2px 7px;border-radius:4px;margin-right:auto;}
+
+  .model-box{background:var(--neutral-soft);border:1.5px solid var(--neutral);border-radius:10px;padding:15px 17px;font-size:14.2px;line-height:1.8;margin-top:6px;}
+  .model-box .lbl{font-family:'Space Mono',monospace;font-size:10px;color:var(--neutral);display:block;margin-bottom:7px;font-weight:700;}
+  .your-draft{background:#fff;border:1.5px dashed var(--pharmacy-green);border-radius:10px;padding:14px 16px;font-size:14px;line-height:1.8;margin-bottom:14px;}
+  .your-draft .lbl{font-family:'Space Mono',monospace;font-size:10px;color:var(--pharmacy-green-deep);display:block;margin-bottom:6px;font-weight:700;}
+  .selfcheck{margin-top:14px;}
+  .selfcheck .q{font-size:13.5px;font-weight:600;margin-bottom:9px;}
+  .selfcheck .opts{display:flex;gap:8px;flex-wrap:wrap;}
+  .sc-btn{flex:1;min-width:120px;border:1.5px solid var(--line);background:#fff;border-radius:9px;padding:11px;font-family:'IBM Plex Sans Arabic';font-size:13px;cursor:pointer;transition:.15s;}
+  .sc-btn:hover{border-color:var(--pharmacy-green);background:var(--sage);}
+  .sc-btn.picked{border-color:var(--pharmacy-green);background:var(--sage);font-weight:600;}
+
+  .golden{background:var(--sage);border:1.5px solid var(--pharmacy-green);border-radius:10px;padding:15px 17px;font-size:15px;line-height:1.75;margin-top:16px;}
+  .golden .lbl{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.05em;color:var(--pharmacy-green-deep);display:block;margin-bottom:7px;font-weight:700;}
+  .gray-note{background:var(--gray-soft);border:1.5px solid var(--gray);border-radius:10px;padding:15px 17px;font-size:14px;line-height:1.8;margin-top:16px;}
+  .gray-note .lbl{font-family:'Space Mono',monospace;font-size:10px;color:var(--gray);display:block;margin-bottom:7px;font-weight:700;}
+
+  .section-label{font-size:12.5px;font-weight:700;opacity:.6;margin:18px 0 8px;}
+  .reveal-wrap{display:flex;flex-direction:column;gap:9px;}
+
+  .summary-card{text-align:center;}
+  .sum-icon{font-size:40px;margin-bottom:8px;}
+  .sum-line{font-family:'Markazi Text';font-weight:700;font-size:30px;color:var(--pharmacy-green-deep);margin:4px 0;}
+  .review-list{display:flex;flex-direction:column;gap:9px;text-align:right;margin:20px 0;max-height:320px;overflow-y:auto;}
+  .review-card{background:var(--sage);border:1.5px solid var(--pharmacy-green);border-radius:8px;padding:12px 14px;font-size:13.5px;line-height:1.7;}
+  .review-card .lbl{font-family:'Space Mono',monospace;font-size:9.5px;color:var(--pharmacy-green-deep);font-weight:700;display:block;margin-bottom:4px;}
+
+  .gate-card{text-align:center;}
+  .gate-card input{width:100%;text-align:center;letter-spacing:.3em;font-family:'Space Mono',monospace;font-size:20px;padding:14px;border-radius:10px;border:1.5px solid var(--line);margin:16px 0;background:#fff;color:var(--ink);}
+  .gate-err{color:var(--trap);font-size:13px;margin-bottom:8px;display:none;}
+
+  .committee-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;gap:10px;}
+  .committee-head h2{font-family:'Markazi Text';font-size:24px;color:var(--pharmacy-green-deep);margin:0;}
+  .refresh-btn{background:var(--sage);border:1px solid var(--pharmacy-green);color:var(--pharmacy-green-deep);border-radius:8px;padding:8px 12px;font-size:12px;cursor:pointer;font-family:'IBM Plex Sans Arabic';white-space:nowrap;}
+  .committee-sub{font-size:12.5px;opacity:.6;margin-bottom:18px;line-height:1.7;}
+  .stat-strip{display:flex;gap:9px;margin-bottom:22px;flex-wrap:wrap;}
+  .stat-box{flex:1;min-width:90px;background:var(--sage);border-radius:10px;padding:12px 8px;text-align:center;}
+  .stat-box .n{font-family:'Markazi Text';font-weight:700;font-size:25px;color:var(--pharmacy-green-deep);line-height:1.2;}
+  .stat-box .l{font-size:10.5px;opacity:.68;}
+  .roster{margin-bottom:24px;border:1px solid var(--line);border-radius:12px;overflow:hidden;}
+  .roster-head{background:var(--sage);padding:12px 14px;font-family:'Markazi Text';font-weight:700;font-size:19px;color:var(--pharmacy-green-deep);}
+  .roster-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:11px 14px;border-top:1px solid var(--line);font-size:13.5px;flex-wrap:wrap;}
+  .roster-row .who-n{font-weight:600;}
+  .roster-row .st{font-size:11.5px;opacity:.65;}
+  .roster-row .sc{font-family:'Space Mono',monospace;font-size:12px;background:var(--sage);color:var(--pharmacy-green-deep);padding:3px 9px;border-radius:4px;white-space:nowrap;}
+  .sys-header{font-family:'Space Mono',monospace;font-size:12px;letter-spacing:.04em;color:#fff;background:var(--pharmacy-green-deep);padding:9px 14px;border-radius:8px;margin:22px 0 12px;direction:ltr;text-align:right;}
+  .sc-block{border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px;background:#fff;}
+  .sc-block .sc-title{font-family:'Markazi Text';font-weight:700;font-size:19px;color:var(--pharmacy-green-deep);margin-bottom:3px;}
+  .sc-block .sc-meta{font-family:'Space Mono',monospace;font-size:10.5px;opacity:.6;margin-bottom:12px;}
+  .opt-row{margin-bottom:11px;}
+  .opt-row .opt-label{font-size:13px;line-height:1.6;margin-bottom:5px;display:flex;justify-content:space-between;gap:10px;align-items:flex-start;}
+  .opt-row .opt-label .cnt{font-family:'Space Mono',monospace;font-size:11.5px;opacity:.7;white-space:nowrap;}
+  .opt-track{height:8px;background:var(--sage);border-radius:4px;overflow:hidden;}
+  .opt-fill{height:100%;border-radius:4px;}
+  .opt-fill.construct{background:var(--neutral);}
+  .opt-fill.aligned{background:var(--success);}
+  .opt-fill.partial{background:var(--urgency);}
+  .opt-fill.off{background:var(--trap);}
+  .draft-list{margin-top:12px;border-top:1px dashed var(--line);padding-top:12px;}
+  .draft-list .dl-title{font-size:12.5px;font-weight:700;color:var(--neutral);margin-bottom:8px;}
+  .draft-entry{background:var(--neutral-soft);border-radius:8px;padding:11px 13px;font-size:13px;line-height:1.75;margin-bottom:7px;}
+  .draft-entry .meta{font-family:'Space Mono',monospace;font-size:10px;opacity:.7;display:block;margin-bottom:4px;}
+  .draft-entry .sj{font-family:'Space Mono',monospace;font-size:9.5px;padding:1.5px 6px;border-radius:3px;margin-right:6px;}
+  .sj.aligned{background:var(--success-soft);color:var(--success);}
+  .sj.partial{background:var(--urgency-soft);color:var(--urgency);}
+  .sj.off{background:var(--trap-soft);color:var(--trap);}
+  .empty-state{text-align:center;padding:32px 12px;opacity:.6;font-size:14px;line-height:1.8;}
+  footer{max-width:640px;width:100%;margin-top:32px;text-align:center;font-size:11.5px;opacity:.45;line-height:1.7;}
+</style>
+</head>
+<body style="background:#F8FAF7;">
+<div class="stage">
+
+  <div class="top-bar">
+    <span class="brand">Summer Training Program — College of Pharmacy</span>
+    <button class="link-btn" onclick="goTo('gate')">لوحة اللجنة</button>
+  </div>
+
+  <!-- ===== INTRO ===== -->
+  <section id="intro" class="screen active">
+    <h1>Body Systems Practice Trainer</h1>
+    <p class="sub">تدريب عملي على مهارة التصرّف أمام المراجع — لا اختبار، بل مساحة لتجرّب فيها استجابتك وتقارنها بخبرة الصيدلاني.</p>
+
+    <div class="card">
+      <div class="notice">
+        <b>عزيزي المتدرب</b>
+        هذا تدريب لا اختبار. لن تحصل على درجة نجاح أو رسوب، والهدف أن تُمرّن نفسك على التفكير والتصرّف كصيدلاني حقيقي. في بعض المواقف ستكتب استجابتك بنفسك أولًا ثم تقارنها بالنموذج، وفي بعضها يعترض عليك المراجع فتتكيّف، وبعضها لا إجابة وحيدة صحيحة فيه. اكتب بصراحة، فالمقارنة هي موضع التعلّم لا الوصول للإجابة الجاهزة. التدريب موزّع على أيام، خمسة مواقف كل يوم، وتُكمل غدًا من حيث توقفت بمجرد كتابة اسمك نفسه.
+      </div>
+
+      <div class="field">
+        <label for="fName">الاسم الثلاثي</label>
+        <input type="text" id="fName" placeholder="الاسم الأول واسم الأب واسم الجد" autocomplete="off">
+        <div class="err" id="errName">يرجى كتابة الاسم الثلاثي كاملًا</div>
+      </div>
+      <div class="field">
+        <label for="fStage">المرحلة الدراسية</label>
+        <select id="fStage">
+          <option value="">— اختر المرحلة —</option>
+          <option>المرحلة الثالثة</option>
+          <option>المرحلة الرابعة</option>
+        </select>
+        <div class="err" id="errStage">يرجى اختيار المرحلة الدراسية</div>
+      </div>
+
+      <div class="toggle-row">
+        <div class="tl"><b>وضع الضغط الزمني (اختياري)</b><br>فعّله لتختبر نفسك تحت ضغط الوقت كما في الصيدلية. اتركه مطفأً لتتعلّم بلا قلق.</div>
+        <label class="switch"><input type="checkbox" id="timerToggle"><span class="slider"></span></label>
+      </div>
+
+      <button class="btn-primary" onclick="beginSession()">ابدأ التدريب</button>
+    </div>
+  </section>
+
+  <!-- ===== PLAY ===== -->
+  <section id="play" class="screen">
+    <div class="progress-dots" id="dots"></div>
+    <div class="head-strip">
+      <span class="step-badge" id="stepBadge">الموقف ١ / ١٥</span>
+      <span class="kind-badge" id="kindBadge">—</span>
+      <span class="timer-live" id="timerLive">⏱ 35</span>
+    </div>
+    <div class="form-title" id="formTitle" style="margin-bottom:3px;">—</div>
+    <div id="sysTagPlay" style="font-family:'Space Mono',monospace;font-size:10px;color:var(--neutral);background:var(--neutral-soft);display:inline-block;padding:2px 8px;border-radius:4px;margin-bottom:14px;direction:ltr;">—</div>
+
+    <div class="bubble">
+      <span class="who" id="bubbleWho">المراجع</span>
+      <span id="bubbleText">—</span>
+    </div>
+
+    <!-- STAGE A: draft / choices -->
+    <div id="stageInput">
+      <div class="prompt-q" id="promptQ">كيف تتصرّف؟</div>
+
+      <!-- construct: free draft first -->
+      <div class="draft-box" id="draftBox" style="display:none;">
+        <textarea id="draftText" placeholder="اكتب بأسلوبك ما ستقوله أو تفعله فعلًا في هذا الموقف..."></textarea>
+        <div class="draft-hint">اكتب استجابتك كما ستقولها للمراجع فعلًا. بعد الإرسال سترى كيف يتصرّف صيدلاني خبير، فتقارن.</div>
+        <button class="btn-primary" onclick="submitDraft()">أرسل استجابتي وقارن</button>
+      </div>
+
+      <!-- select: choices -->
+      <div class="choices" id="choicesBox" style="display:none;"></div>
+    </div>
+
+    <!-- STAGE B: dialogue turn (patient pushback) -->
+    <div id="stageDialogue" style="display:none;">
+      <div class="bubble reply">
+        <span class="who" id="replyWho">المراجع يعترض</span>
+        <span id="replyText">—</span>
+      </div>
+      <div class="prompt-q">بماذا تردّ الآن؟</div>
+      <div class="draft-box">
+        <textarea id="replyDraft" placeholder="اكتب ردّك على اعتراض المراجع..."></textarea>
+        <div class="draft-hint">لا تتراجع عن الصواب، لكن لا تخسر ثقة المراجع. وازن بين الأمرين.</div>
+        <button class="btn-primary" onclick="submitReply()">أرسل ردّي</button>
+      </div>
+    </div>
+
+    <!-- STAGE C: reveal -->
+    <div id="stageReveal" style="display:none;">
+      <div id="revealTop"></div>
+      <div id="revealBody"></div>
+      <div id="selfCheckWrap" class="selfcheck" style="display:none;">
+        <div class="q">قبل أن تنتقل — قارن استجابتك بالنموذج بصدق: أين تقع؟</div>
+        <div class="opts">
+          <button class="sc-btn" onclick="pickSelf('aligned',this)">قريبة من النموذج</button>
+          <button class="sc-btn" onclick="pickSelf('partial',this)">أصبت جزئيًا</button>
+          <button class="sc-btn" onclick="pickSelf('off',this)">فاتني الجوهر</button>
+        </div>
+      </div>
+      <button class="btn-primary" id="nextBtn" onclick="nextScenario()" style="margin-top:18px;display:none;">الموقف التالي</button>
+    </div>
+  </section>
+
+  <!-- ===== SUMMARY ===== -->
+  <section id="summary" class="screen">
+    <div class="card summary-card">
+      <div class="sum-icon" id="sumIcon">🩺</div>
+      <div class="sum-line" id="sumLine">أكملت التدريب</div>
+      <p style="font-size:14px;opacity:.72;line-height:1.85;" id="sumText">راجعت مواقف اليوم وجرّبت استجابتك في كلٍ منها.</p>
+      <div class="review-list" id="reviewList"></div>
+      <p style="font-size:13px;opacity:.65;line-height:1.85;">التعلّم يترسّخ بالتكرار المتباعد. عُد إلى هذه المواقف بعد أيام وجرّبها ثانية — ستلاحظ الفرق في تصرّفك.</p>
+      <button class="btn-outline" id="sumRestartBtn" onclick="restartAll()" style="display:none;">إعادة التدريب</button>
+    </div>
+  </section>
+
+  <!-- ===== GATE ===== -->
+  <section id="gate" class="screen">
+    <div class="card gate-card">
+      <h1 class="ar" style="font-size:26px;">دخول اللجنة العلمية</h1>
+      <p class="sub" style="margin-bottom:0;">رمز الدخول مخصص لأعضاء اللجنة فقط</p>
+      <p class="gate-err" id="gateErr">رمز غير صحيح، يرجى المحاولة مرة أخرى</p>
+      <input type="password" inputmode="numeric" id="gateInput" placeholder="••••" maxlength="8">
+      <button class="btn-primary" onclick="checkGate()">دخول</button>
+      <button class="link-btn" style="margin-top:16px;" onclick="goTo('intro')">رجوع</button>
+    </div>
+  </section>
+
+  <!-- ===== COMMITTEE ===== -->
+  <section id="committee" class="screen">
+    <div class="card">
+      <div class="committee-head">
+        <h2>لوحة نتائج اللجنة العلمية</h2>
+        <button class="refresh-btn" onclick="loadCommittee()">تحديث ↻</button>
+      </div>
+      <div class="committee-sub">النتائج مجمّعة لكل موقف على حدة، مع تقييم المتدربين الذاتي لاستجاباتهم، ونصوص ما كتبوه.</div>
+      <div id="committeeBody"><div class="empty-state">جارٍ التحميل...</div></div>
+    </div>
+    <div style="text-align:center;margin-top:14px;"><button class="link-btn" onclick="goTo('intro')">رجوع</button></div>
+  </section>
+
+  <footer>Body Systems Practice Trainer — أداة تدريب معتمدة ضمن برنامج التدريب الصيفي، اللجنة العلمية للتدريب</footer>
+</div>
+
+<script>
+/* ============ DATA ============
+ kind: "construct" (اكتب أولًا ثم قارن) | "select" (خيارات) | "dialogue" (اعتراض المراجع) | "gray" (بلا إجابة مثلى)
+*/
+const SCENARIOS = [
+/* ===== CARDIOVASCULAR — 5 ===== */
+{ id:"cv1", sys:"Cardiovascular System", kind:"construct", title:"إيقاف حاصر بيتا ذاتيًا", who:"مريض ارتفاع ضغط",
+  text:"«توقفت عن دواء الضغط منذ أسبوعين لأن قراءاتي أصبحت طبيعية، واليوم جئت لأشتري مسكنًا لصداع بدأ يلازمني.»",
+  prompt:"اكتب كيف تتصرّف مع هذا المريض.",
+  model:"لا أصرف المسكن بمعزل عن السياق. أوضّح أن حاصرات بيتا لا تُوقف فجأة، وأربط الصداع باحتمال ارتداد الضغط الذي يرفع الضغط ويسرّع القلب فوق مستواه الأصلي وقد يحرّض ذبحة. أوجّهه لمراجعة الطبيب قبل أي قرار، ولا أنصحه باستئناف الجرعة السابقة من تلقائي لأن ذلك قرار طبي.",
+  keys:["ربط الصداع باحتمال ارتداد الضغط لا معالجته كعرَض منعزل","توضيح أن حاصرات بيتا لا تُوقف فجأة","توجيهه للطبيب دون وصف جرعة الاستئناف بنفسك"],
+  golden:"دواء الضغط من نوع حاصرات بيتا لا يُوقف فجأة، وصداعك قد يكون ارتداد الضغط، فراجع طبيبك قبل أي قرار."},
+
+{ id:"cv2", sys:"Cardiovascular System", kind:"dialogue", title:"إيقاف مضاد الصفيحات قبل السفر", who:"مريض بعد جلطة قلبية",
+  text:"«أستخدم الأسبرين منذ جلطتي قبل سنتين، وسأسافر بالطائرة، ونصحوني بإيقافه حتى لا يصبح دمي سائلًا أثناء السفر.»",
+  prompt:"اكتب أول ما ستوضّحه له.",
+  reply:"«لكن الجميع يقول إن السفر الطويل يخثّر الدم، فأليس تمييعه وقتها أفضل وأأمن لي؟»",
+  replyModel:"أصحّح المفهوم بلطف: نعم السفر الطويل يزيد خطر التخثر، وهذا بالضبط سبب إضافي لعدم إيقاف الأسبرين لا لإيقافه. الأسبرين لديك ليس لتمييع الدم بالمعنى العام بل لحمايتك من جلطة قلبية ثانية، وإيقافه يرفع خطرها في الأسابيع التالية. فالمنطق الذي بُني عليه القرار معكوس تمامًا.",
+  model:"أوضّح أن الأسبرين هنا وقاية ثانوية بعد جلطة، وإيقافه يرفع خطر تكرارها، وأن السفر الجوي يزيد خطر التخثر لا النزف. لا أوافق على إيقافه ولو مؤقتًا، فهذا قرار طبي بحت، وأي إيقاف يترك نافذة خطر حقيقية.",
+  keys:["تصحيح المفهوم المعكوس عن السفر والتخثر","توضيح أن الأسبرين وقاية من جلطة ثانية لا مجرد مميّع","عدم الموافقة على الإيقاف المؤقت (قرار طبي)"],
+  golden:"الأسبرين لديك ليس لتمييع الدم بل لحمايتك من جلطة ثانية، والسفر يزيد خطر التخثر فلا توقفه قبله."},
+
+{ id:"cv3", sys:"Cardiovascular System", kind:"select", title:"سعال مثبط الإنزيم المحوّل", who:"مريض ارتفاع ضغط",
+  text:"«منذ بدأت دواء الضغط الجديد قبل شهر وأنا أعاني سعالًا جافًا يوقظني ليلًا، واشتريت ثلاثة أنواع من شراب السعال دون فائدة.»",
+  prompt:"اختر التصرّف الأقرب، ثم اقرأ التحليل.",
+  choices:[
+    {t:"أوضح أن السعال الجاف عرَض معروف لهذه الفئة وأوجهه للطبيب لتغييرها إلى فئة بديلة", type:"correct",
+     head:"القرار الأمثل", why:"السعال الجاف المستمر عرَض معروف لمثبطات الإنزيم المحوّل بسبب تراكم البراديكينين، ولا يستجيب لأدوية السعال. التعرّف عليه يوفّر شهورًا من علاج عبثي، والبديل متاح وفعّال."},
+    {t:"أستبعد الحساسية والارتجاع قبل ربطه بالدواء", type:"weak",
+     head:"منهج سليم يؤخر الأرجح", why:"الاستبعاد ممارسة جيدة، لكن التزامن مع بدء الدواء وطبيعة السعال الجاف وعدم استجابته تجعل السبب الدوائي هو الأرجح بوضوح."},
+    {t:"أنصحه بإيقاف أدوية السعال وأصرف ملطفًا للحلق", type:"weak",
+     head:"صحيح جزئيًا يترك السبب", why:"إيقاف الأدوية غير المجدية سليم، لكن الملطف يترك السبب الحقيقي قائمًا فيستمر السعال ليلًا."},
+    {t:"أطمئنه أن العرَض يزول تدريجيًا مع الاستمرار", type:"trap",
+     head:"معلومة غير صحيحة", why:"هذا السعال لا يزول عادة مع الاستمرار وقد يمتد شهورًا، وترسيخ ذلك يجعله يتحمّل عرَضًا مزعجًا أو يوقف دواء الضغط ذاتيًا."}
+  ],
+  golden:"السعال الجاف عرَض معروف لهذه الفئة ولا يستجيب لأدوية السعال، وطبيبك يستطيع تغييرها إلى بديل مناسب."},
+
+{ id:"cv4", sys:"Cardiovascular System", kind:"construct", title:"تداخل مضاد التخثر", who:"مريض على وارفارين",
+  text:"«أعاني ألمًا في ركبتي وأريد مضادًا للالتهاب قويًا. أستخدم الوارفارين وأتابع تحاليلي والنتائج مستقرة.»",
+  prompt:"اكتب كيف تتصرّف مع طلبه.",
+  model:"لا أصرف مضاد التهاب غير ستيرويدي، فهو يرفع خطر النزف مع الوارفارين عبر تثبيط الصفيحات وتهيّج المعدة وإزاحة الوارفارين من ارتباطه. أقترح الباراسيتامول كخيار أول مع التنبيه أن جرعاته العالية المستمرة قد ترفع مؤشر التخثر أيضًا، وأُحيله إن استمر الألم. لا أعتمد على استقرار التحاليل السابقة لأنها لا تتنبأ بأثر تداخل لم يحدث بعد.",
+  keys:["رفض مضاد الالتهاب غير الستيرويدي لخطر النزف","اقتراح الباراسيتامول كبديل أول مع حدوده","عدم الاتكاء على استقرار التحاليل السابقة"],
+  golden:"مضادات الالتهاب هذه ترفع خطر النزف مع الوارفارين، والباراسيتامول أسلم بداية، وإن استمر الألم فالمراجعة ضرورية."},
+
+{ id:"cv5", sys:"Cardiovascular System", kind:"select", title:"آلام عضلية مع الستاتين", who:"مريض ارتفاع كوليسترول",
+  text:"«منذ ثلاثة أسابيع أشعر بألم وضعف في عضلات فخذي وكتفي، وقرأت أن دواء الكوليسترول قد يسببه، ففكرت في إيقافه.»",
+  prompt:"اختر التصرّف الأقرب، ثم اقرأ التحليل.",
+  choices:[
+    {t:"أسأل عن شدة الألم ولون البول وانتشار الضعف، وأوجهه للطبيب لتقييم إنزيمات العضلات قبل أي قرار", type:"correct",
+     head:"القرار الأمثل", why:"الاعتلال العضلي مع الستاتينات طيف يمتد إلى انحلال ربيدي نادر خطر على الكلى. سؤال لون البول تحديدًا يكشف الحالة الخطرة مبكرًا ويحتاج فحص الكرياتين كيناز."},
+    {t:"أوضح أن الألم عرَض معروف وأنصحه بعدم الإيقاف الذاتي والمراجعة", type:"weak",
+     head:"صحيح لكنه بلا فرز", why:"النصيحة سليمة، لكن دون أسئلة الفرز قد يُترك مريض في بداية انحلال ربيدي ينتظر موعدًا عاديًا."},
+    {t:"أراجع أدويته ومكملاته بحثًا عن تداخل يرفع تركيز الستاتين", type:"weak",
+     head:"مهم لكنه ليس الأولوية الآن", why:"التداخلات ترفع الخطر فعلًا ومراجعتها ضرورية، لكن تقييم شدة الأعراض الحالية يسبق البحث عن السبب."},
+    {t:"أنصحه بإيقاف الدواء أسبوعين لملاحظة زوال الألم", type:"trap",
+     head:"تجربة ذاتية غير آمنة", why:"إيقاف واستئناف علاج وقائي دون إشراف يعرّضه لخطر قلبي، وقد يؤخّر تشخيص حالة عضلية تحتاج تدخلًا فوريًا."}
+  ],
+  golden:"أخبرني عن شدة الألم ولون بولك، فبعض حالات ألم العضلات مع هذه الأدوية تحتاج فحصًا عاجلًا لا مجرد إيقاف."},
+
+/* ===== RESPIRATORY — 5 ===== */
+{ id:"rs1", sys:"Respiratory System", kind:"construct", title:"الإفراط في موسّع القصبات", who:"مريض ربو",
+  text:"«أشتري بخاخ الموسّع كل عشرة أيام لأنني أحتاجه عدة مرات يوميًا، وهو يريحني فورًا في كل مرة.»",
+  prompt:"اكتب كيف تتصرّف مع هذا المريض.",
+  model:"لا أكتفي بصرف البخاخ. أوضّح أن احتياجه عدة مرات يوميًا واستهلاك عبوة كل عشرة أيام مؤشر معتمد على ربو غير مضبوط وارتباط بخطر النوبات الشديدة. الراحة الفورية تخفي التهابًا مستمرًا لا يعالجه الموسّع. أسأله عن العلاج الوقائي وانتظامه عليه، وأوجّهه لمراجعة الطبيب لتقييمه لا لزيادة الموسّع.",
+  keys:["قراءة الاستهلاك المرتفع كعلامة ربو غير مضبوط","السؤال عن العلاج الوقائي وانتظامه","التوجيه لتقييم الوقائي لا لزيادة الموسّع"],
+  golden:"احتياجك للبخاخ عدة مرات يوميًا يعني أن ربوك غير مضبوط، والحل في مراجعة العلاج الوقائي لا زيادة الموسّع."},
+
+{ id:"rs2", sys:"Respiratory System", kind:"dialogue", title:"بحّة الكورتيزون الاستنشاقي", who:"مريض ربو",
+  text:"«صوتي أصبح مبحوحًا منذ بدأت البخاخ الوقائي، وأشعر بحرقة في فمي، ففكرت في إيقافه والاكتفاء بالموسّع.»",
+  prompt:"اكتب أول ما ستوضّحه له.",
+  reply:"«لكن الموسّع يريحني فورًا أما الوقائي فلا أشعر بفائدته المباشرة، فلماذا لا أكتفي به؟»",
+  replyModel:"أوضّح أن الموسّع يعالج العرَض لحظيًا بينما الوقائي يعالج الالتهاب الأساسي الذي لا تشعر به لكنه سبب النوبات. الاكتفاء بالموسّع وحده هو النمط الأكثر ارتباطًا بالوفيات المرتبطة بالربو. أما البحّة فتُحل ببساطة بالمضمضة بالماء وبصقه بعد كل استخدام، فلا داعي للإيقاف أصلًا.",
+  model:"أوضّح أن المضمضة بالماء وبصقه بعد كل جرعة تمنع البحّة والقلاع الفموي، وأشدّد على أن استبدال الوقائي بالموسّع خطر جسيم. أصحّح الفهم أن غياب الإحساس بفائدة الوقائي لا يعني غياب عمله.",
+  keys:["حل البحّة بالمضمضة بعد كل جرعة","التحذير الحازم من الاكتفاء بالموسّع","تصحيح فهم دور العلاج الوقائي غير المحسوس"],
+  golden:"تمضمض بالماء وابصقه بعد كل استخدام للوقائي فهذا يمنع البحّة، ولا توقفه لأنه هو الذي يحميك من النوبات."},
+
+{ id:"rs3", sys:"Respiratory System", kind:"select", title:"مثبط السعال في السعال المنتج", who:"مريض التهاب قصبات",
+  text:"«سعالي مصحوب ببلغم كثيف منذ أربعة أيام ويمنعني من النوم، وأريد دواءً يوقف السعال تمامًا حتى أستريح.»",
+  prompt:"اختر التصرّف الأقرب، ثم اقرأ التحليل.",
+  choices:[
+    {t:"أوضح أن السعال المنتج آلية تنظيف ضرورية، وأقترح مقشعًا مع سوائل، وأنبّه لعلامات تستدعي المراجعة", type:"correct",
+     head:"القرار الأمثل", why:"كبت السعال المنتج يحبس الإفرازات ويزيد خطر الالتهاب الرئوي. توجيه العلاج نحو تسييل البلغم هو الصحيح، مع تحديد علامات إنذارية كضيق النفس والحمى المستمرة."},
+    {t:"أصرف مقشعًا وأنصح بالبخار والسوائل الدافئة", type:"weak",
+     head:"صحيح بلا تأطير", why:"الاختيار سليم، لكن غياب شرح سبب رفض المثبط يدفعه لشرائه من مكان آخر، وغياب العلامات الإنذارية يترك حالة قد تتطور."},
+    {t:"أقترح مثبط سعال ليلًا فقط مع مقشع نهارًا", type:"weak",
+     head:"حل شائع لكنه محفوف", why:"كبت السعال ليلًا يعني احتباس الإفرازات ساعات في وضع الاستلقاء، وهو أسوأ ظرف لتراكمها."},
+    {t:"أصرف المثبط لأن الحرمان من النوم يضعف المناعة", type:"trap",
+     head:"تبرير منطقي لقرار خاطئ", why:"أهمية النوم حقيقية، لكن خطر احتباس الإفرازات أوضح وأقرب من أثر قلة النوم على المناعة."}
+  ],
+  golden:"السعال المصحوب بالبلغم آلية تنظيف لرئتيك، وإيقافه يحبس الإفرازات، والأفضل تسييل البلغم لا كبته."},
+
+{ id:"rs4", sys:"Respiratory System", kind:"construct", title:"مزيل الاحتقان مع ارتفاع الضغط", who:"مريض ارتفاع ضغط مصاب بالزكام",
+  text:"«عندي زكام وانسداد أنف شديد وأريد الحبوب التي تفتح الأنف بسرعة. أنا مريض ضغط لكن حالتي مستقرة تمامًا.»",
+  prompt:"اكتب كيف تتصرّف مع طلبه.",
+  model:"لا أصرف مزيل الاحتقان الفموي، فالفئة الودّية المقلّدة تسبب تضيقًا وعائيًا يرفع الضغط ويقاوم أثر دوائه. أقترح غسولًا ملحيًا أو بخاخًا موضعيًا لمدة محدودة لا تتجاوز أيامًا لتفادي احتقان الارتداد. لا أتّكئ على استقرار الضغط لأنه ناتج عن العلاج لا عن زوال المرض، وإدخال دواء رافع للضغط يعاكس هذا العلاج مباشرة.",
+  keys:["تجنّب مزيل الاحتقان الفموي لرفعه الضغط","اقتراح بديل موضعي/ملحي محدد المدة","عدم الاتكاء على استقرار الضغط الحالي"],
+  golden:"حبوب فتح الأنف ترفع الضغط وتعاكس دواءك، والغسول الملحي أو البخاخ الموضعي لأيام قليلة بديل آمن لك."},
+
+{ id:"rs5", sys:"Respiratory System", kind:"select", title:"مضاد حيوي لعدوى فيروسية", who:"مراجع بأعراض التهاب حلق",
+  text:"«حلقي يؤلمني منذ يومين مع رشح وسعال خفيف وبلا حرارة تقريبًا. أريد مضادًا حيويًا، فهو ينفعني دائمًا.»",
+  prompt:"اختر التصرّف الأقرب، ثم اقرأ التحليل.",
+  choices:[
+    {t:"أوضح أن الرشح والسعال يرجّحان السبب الفيروسي، وأقترح علاجًا عرَضيًا مع تحديد متى تلزم المراجعة", type:"correct",
+     head:"القرار الأمثل", why:"وجود الرشح والسعال مع غياب الحمى يرجّح الفيروسي وفق المعايير السريرية. بديل عرَضي فعّال مع معيار واضح للمراجعة يحفظ ثقة المراجع بدل رفض مجرد."},
+    {t:"أشرح خطر المقاومة وأرفض الصرف دون وصفة", type:"weak",
+     head:"موقف صحيح يُفقد الثقة", why:"المبدأ سليم، لكن الاقتصار على الرفض دون بديل عملي يدفعه لصيدلية أخرى تصرفه له."},
+    {t:"أسأل عن صديد اللوزتين وتضخم العقد قبل الحكم", type:"weak",
+     head:"فرز جيد ناقص المخرَج", why:"علامات معتمدة فعلًا، لكن الرشح والسعال وغياب الحمى مجتمعة ترجّح الفيروسي بما يكفي للانتقال للتوجيه."},
+    {t:"أصرفه بشرط إكمال الكورس كاملًا", type:"trap",
+     head:"شرط لا يصحح خطأ أصليًا", why:"إكمال الكورس لا يبرر صرف مضاد لعدوى فيروسية، فالخطأ في وصف علاج بلا دلالة لا في المدة."}
+  ],
+  golden:"وجود الرشح والسعال بلا حرارة يرجّح أن السبب فيروسي لا يفيده المضاد، وسأعطيك ما يخفف الأعراض فعلًا."},
+
+/* ===== GASTROINTESTINAL — 5 ===== */
+{ id:"gi1", sys:"Gastrointestinal System", kind:"dialogue", title:"الاعتماد المزمن على مثبط المضخة", who:"مراجع يستخدمه دون إشراف",
+  text:"«أستخدم مثبط الحموضة يوميًا منذ أكثر من سنة، وكلما حاولت إيقافه ترجع الحرقة أقوى، فأعود إليه فورًا.»",
+  prompt:"اكتب أول ما ستوضّحه له.",
+  reply:"«إذن هذا يثبت أن جسمي يحتاجه دائمًا، فلماذا لا أستمر عليه ما دام يريحني؟»",
+  replyModel:"أوضّح أن عودة الحرقة أقوى بعد الإيقاف ليست دليلًا على حاجة دائمة، بل ظاهرة فرط إفراز ارتدادي يسببها الدواء نفسه، وكسر هذه الحلقة يحتاج تقليلًا تدريجيًا مخططًا لا استمرارًا. كما أن الاستخدام سنة كاملة يستوجب تقييم السبب الأساسي، فقد يخفي حالة تحتاج فحصًا.",
+  model:"أوضّح أن الإيقاف المفاجئ يسبب فرط إفراز ارتدادي، وأن الاستخدام الطويل يستدعي تقييمًا طبيًا وخطة تقليل تدريجي، مع التنبيه لمخاطر الاستخدام المزمن كنقص المغنيسيوم وب١٢ وأثر العظام.",
+  keys:["تفسير عودة الحرقة كارتداد لا كحاجة دائمة","ضرورة التقليل التدريجي المخطط","تقييم السبب الأساسي بعد سنة استخدام"],
+  golden:"عودة الحرقة أقوى بعد الإيقاف رد فعل معروف للدواء نفسه، والحل تقليل تدريجي مع تقييم طبي لا الاستمرار مدى الحياة."},
+
+{ id:"gi2", sys:"Gastrointestinal System", kind:"construct", title:"مضاد الإسهال في حالة مشبوهة", who:"مراجع بإسهال حاد",
+  text:"«عندي إسهال شديد منذ يومين مع مغص وحرارة، ولاحظت خيوط دم في البراز مرة. أريد حبوبًا توقف الإسهال فورًا لأن عندي سفرًا غدًا.»",
+  prompt:"اكتب كيف تتصرّف، وانتبه لتفاصيل حالته.",
+  model:"لا أصرف مضاد الحركة. اجتماع الحمى والدم في البراز يشير إلى إسهال التهابي غازٍ، وكبت الحركة فيه يطيل بقاء العامل الممرض وقد يؤدي إلى تضخم قولوني سام. أوجّهه لمراجعة طبية عاجلة، وأعطيه محلول معالجة الجفاف ريثما يُقيَّم، ولا أسايره في ظرف السفر لأن ذلك يؤخّر تشخيص حالة قد تكون خطرة أثناء بعده عن الرعاية.",
+  keys:["منع مضاد الحركة مع وجود حمى ودم","الإحالة الطبية العاجلة","معالجة الجفاف مع عدم مسايرة ظرف السفر على حساب السلامة"],
+  golden:"وجود الحرارة والدم مع الإسهال يمنع استخدام موقفات الإسهال، وحالتك تحتاج تقييمًا طبيًا عاجلًا قبل السفر."},
+
+{ id:"gi3", sys:"Gastrointestinal System", kind:"select", title:"الاعتماد على الملينات المنبهة", who:"مراجعة تعاني إمساكًا مزمنًا",
+  text:"«أستخدم الملين المنبه يوميًا منذ شهور، وصرت لا أستطيع التبرز بدونه، وأشعر أن مفعوله يضعف تدريجيًا.»",
+  prompt:"اختر التصرّف الأقرب، ثم اقرأ التحليل.",
+  choices:[
+    {t:"أوضح أن الملينات المنبهة اليومية تُفقد الأمعاء استجابتها، وأقترح ملينًا تناضحيًا مع الألياف والسوائل ومراجعة طبية", type:"correct",
+     head:"القرار الأمثل", why:"الاستخدام اليومي المطوّل يقلل استجابة القولون فيزيد الاعتماد. الانتقال لملين تناضحي مع تصحيح الألياف يعيد النمط الطبيعي، والإمساك المزمن لشهور يستوجب تقييم سببه."},
+    {t:"أنصحها بزيادة الألياف والسوائل والحركة فقط", type:"weak",
+     head:"أساس صحيح بطيء وحده", why:"ركيزة العلاج بلا خلاف، لكن تطبيقها وحدها على أمعاء اعتادت التنبيه اليومي لن يعطي نتيجة سريعة فتعود للملين."},
+    {t:"أنبّهها لخطر اضطراب الأملاح ونقص البوتاسيوم", type:"weak",
+     head:"تحذير صحيح بلا مخرج", why:"خطر حقيقي يستحق التنبيه، لكن التحذير دون بديل عملي يتركها أمام معضلة دون حل."},
+    {t:"أقترح زيادة الجرعة لاستعادة الفعالية المفقودة", type:"trap",
+     head:"تعميق للمشكلة", why:"الزيادة تسرّع الحلقة نفسها وتزيد الاعتماد واضطراب الشوارد، وهي الطريق المباشر لقولون كسول."}
+  ],
+  golden:"الاستخدام اليومي للملين المنبه يُضعف استجابة أمعائك، والانتقال إلى نوع تناضحي مع الألياف يعيدها للعمل طبيعيًا."},
+
+{ id:"gi4", sys:"Gastrointestinal System", kind:"construct", title:"مضادات الحموضة والتداخل الزمني", who:"مريض هشاشة عظام",
+  text:"«أتناول مضاد الحموضة مع كل أدويتي في وقت واحد صباحًا حتى لا أنسى شيئًا، ومنها دواء الغدة الدرقية وحبوب الحديد.»",
+  prompt:"اكتب كيف تتصرّف.",
+  model:"أوضّح أن الكاتيونات في مضاد الحموضة ترتبط بهرمون الغدة والحديد وتعيق امتصاصهما بنسبة معتبرة. أضع له جدولًا زمنيًا يباعد بينها بساعتين على الأقل، مع التنبيه أن هرمون الغدة يؤخذ على معدة فارغة قبل الإفطار. المباعدة تحل المشكلة دون تغيير أي دواء، ولا أستبدل مضاد الحموضة بمثبط مضخة لأن ذلك ينقل التداخل ولا يلغيه.",
+  keys:["توضيح إعاقة الامتصاص والمباعدة ساعتين","توقيت هرمون الغدة على معدة فارغة","عدم استبدال الدواء بحل بسيط للتوقيت"],
+  golden:"مضاد الحموضة يعيق امتصاص دواء الغدة والحديد، فباعد بينهما ساعتين ولا تأخذها جميعًا في وقت واحد."},
+
+{ id:"gi5", sys:"Gastrointestinal System", kind:"dialogue", title:"غثيان الحمل ومحاذير الصرف", who:"مراجعة حامل في الشهر الثاني",
+  text:"«أنا حامل وأعاني غثيانًا وقيئًا متكررًا، وأختي أعطتني حبوبًا استخدمتها في حملها وأريد شراء مثلها.»",
+  prompt:"اكتب أول ما ستوضّحه لها.",
+  reply:"«لكنها استخدمتها في حملها ولم يحدث لها شيء وولدت بسلام، فلماذا تمنعني إذن؟»",
+  replyModel:"أقدّر طمأنتها بتجربة أختها، لكن أوضّح أن الصرف في الحمل لا يُبنى على تجربة شخص آخر، فالحالة والجرعة والتصنيف الدوائي قد تختلف، وسلامة حمل لا تضمن سلامة آخر. والأهم أن قيئها المتكرر نفسه قد يستدعي تقييمًا لا مجرد دواء. أعرض بديلًا أوليًا آمنًا وأوجّهها للطبيب.",
+  model:"أمتنع عن الصرف بناءً على تجربة الغير، وأقيّم شدة القيء وعلامات الجفاف، وأقترح فيتامين ب٦ والزنجبيل كخيار أول مع إرشادات غذائية، وأوجّهها للطبيب، لأن القيء الحملي المفرط قد يستدعي تدخلًا عاجلًا.",
+  keys:["رفض الصرف بناءً على تجربة شخص آخر","تقييم شدة القيء وعلامات الجفاف","بديل أولي آمن مع التوجيه الطبي"],
+  golden:"لا أصرف دواءً في الحمل بناءً على تجربة غيرك، ودعيني أقيّم شدة القيء ثم نحدد الخطوة المناسبة مع طبيبك."},
+
+/* ===== INFECTIONS & ANTIBIOTICS — 2 ===== */
+{ id:"ab1", sys:"Infections & Antibiotics", kind:"construct", title:"إيقاف المضاد الحيوي مبكرًا", who:"مراجع تحسّن بعد ثلاثة أيام",
+  text:"«الطبيب وصف كورسًا لسبعة أيام، وبعد ثلاثة أيام تحسّنت فأوقفته. الآن عادت الأعراض خفيفة، فهل أكمل ما تبقى من العبوة؟»",
+  prompt:"اكتب كيف تتصرّف.",
+  model:"أوضّح أن التحسّن يسبق القضاء على العدوى، وأن عودة الأعراض بعد إيقاف مبكر قد تعني انتكاسة أو نشوء مقاومة، وكلتاهما تحتاج تقييمًا طبيًا يحدد إن كان استكمال ما تبقى كافيًا أصلًا، فالكمية المتبقية قد لا تشكّل مدة علاجية كافية. لا أصرف عبوة جديدة ولا أنصح بمجرد الإكمال دون تقييم.",
+  keys:["توضيح أن التحسّن يسبق القضاء على العدوى","التوجيه لتقييم عودة الأعراض طبيًا","عدم صرف عبوة جديدة أو الإكمال دون تقييم"],
+  golden:"شعورك بالتحسّن يسبق القضاء على العدوى، وعودة الأعراض تحتاج تقييم طبيبك قبل استئناف ما تبقى."},
+
+{ id:"ab2", sys:"Infections & Antibiotics", kind:"dialogue", title:"مضاد حيوي وحبوب منع الحمل", who:"مراجعة على مانع حمل فموي",
+  text:"«الطبيب وصف لي هذا المضاد لأسبوعين، وأنا أستخدم حبوب منع الحمل. سمعت أن المضادات تبطل مفعولها، فهل هذا صحيح؟»",
+  prompt:"اكتب أول ما ستوضّحه لها.",
+  reply:"«قرأت أن هذا مجرد اعتقاد خاطئ وأن المضادات لا تؤثر في حبوب منع الحمل، فهل أطمئن؟»",
+  replyModel:"أوضّح أن القاعدة العامة صحيحة فعلًا لمعظم المضادات، لكن هذا النوع تحديدًا استثناء بارز، فهو من أقوى محفّزات إنزيمات الكبد ويقلل فعالية المانع الهرموني. لذا أنصحها بوسيلة إضافية طوال العلاج ولأسابيع بعده، لأن أثر التحفيز الإنزيمي يستمر بعد التوقف.",
+  model:"أوضّح أن هذا النوع يحفّز إنزيمات الكبد ويقلل فعالية المانع الهرموني، بخلاف معظم المضادات، وأنصح بوسيلة إضافية أثناء العلاج ولمدة بعده، مع خيار مراجعة الطبيب للتحول لوسيلة غير هرمونية.",
+  keys:["تمييز هذا النوع كاستثناء عن القاعدة العامة","الوسيلة الإضافية طوال العلاج ولأسابيع بعده","عدم الطمأنة الخاطئة اعتمادًا على القاعدة العامة"],
+  golden:"هذا المضاد تحديدًا يقلل فعالية حبوب منع الحمل، فاستخدمي وسيلة إضافية طوال العلاج ولأسابيع بعده."},
+
+/* ===== NERVOUS SYSTEM — 3 ===== */
+{ id:"ns1", sys:"Nervous System", kind:"construct", title:"إيقاف مضاد الاكتئاب ذاتيًا", who:"مراجع تحسّن مزاجه",
+  text:"«أستخدم مضاد الاكتئاب منذ ثلاثة أشهر وأشعر أنني بخير، فأوقفته قبل أربعة أيام. الآن أشعر بدوخة وتنميل ونوم مضطرب.»",
+  prompt:"اكتب كيف تتصرّف معه.",
+  model:"أوضّح أن هذه أعراض انسحاب معروفة لا انتكاسة للمرض، تظهر خلال أيام من التوقف المفاجئ، وتمييزها مهم حتى لا يظن أن مرضه عاد فيفقد ثقته بالعلاج. أشرح أن هذا الدواء يُوقف بتقليل تدريجي، وأوجّهه للطبيب عاجلًا، ولا أصف له جرعة الاستئناف بنفسي لأن ذلك قرار طبي يوازن بين مدة العلاج وخطر الانتكاسة.",
+  keys:["تمييز أعراض الانسحاب عن انتكاسة المرض","توضيح ضرورة التقليل التدريجي","التوجيه الطبي دون وصف جرعة الاستئناف"],
+  golden:"ما تشعر به أعراض انسحاب من الإيقاف المفاجئ لا عودة للمرض، وهذا الدواء يُوقف بتقليل تدريجي، فراجع طبيبك عاجلًا."},
+
+{ id:"ns2", sys:"Nervous System", kind:"select", title:"الإفراط في مسكنات الصداع", who:"مراجعة تعاني صداعًا شبه يومي",
+  text:"«أتناول مسكن الصداع كل يوم تقريبًا منذ أشهر، ورغم ذلك أصبح الصداع يأتي أكثر ويزداد يومًا بعد يوم.»",
+  prompt:"اختر التصرّف الأقرب، ثم اقرأ التحليل.",
+  choices:[
+    {t:"أوضح احتمال صداع الإفراط الدوائي الذي يسببه المسكن نفسه، وأوجهها للطبيب لخطة سحب مدروسة", type:"correct",
+     head:"القرار الأمثل", why:"الاستخدام أكثر من عشرة إلى خمسة عشر يومًا شهريًا يحوّل الصداع إلى صداع مرتد يسببه الدواء، وازدياد التكرار علامته. السحب يحتاج خطة لأن الأعراض تسوء مؤقتًا قبل التحسّن."},
+    {t:"أقترح تغيير نوع المسكن إلى فئة أخرى", type:"trap",
+     head:"تدوير داخل المشكلة", why:"صداع الإفراط يحدث مع أنواع المسكنات المختلفة، فالتغيير يطيل المشكلة ويؤخّر التشخيص."},
+    {t:"أسألها عن النوم والتوتر والكافيين كمحفزات", type:"weak",
+     head:"استقصاء يفوّت الأوضح", why:"محفزات حقيقية تستحق المراجعة، لكن نمط الاستخدام اليومي مع ازدياد التكرار يشير لصداع الإفراط بوضوح أكبر."},
+    {t:"أنبّهها لمخاطر المسكنات على المعدة والكلى", type:"weak",
+     head:"تحذير صحيح لا يفسّر صداعها", why:"مخاطر حقيقية، لكن التحذير وحده لا يفسّر لماذا يزداد صداعها رغم العلاج فتستمر على النمط."}
+  ],
+  golden:"صداعك المتزايد قد يكون سببه المسكن نفسه مع الاستخدام شبه اليومي، وإيقافه يحتاج خطة مدروسة مع طبيبك."},
+
+{ id:"ns3", sys:"Nervous System", kind:"gray", title:"مضاد صرع وتخطيط للحمل", who:"مراجعة على مضاد صرع",
+  text:"«أستخدم مضاد الصرع منذ سنوات وحالتي مستقرة، وأخطط للحمل قريبًا. جئت أشتري فيتامينات الحمل التي أراها في الإعلانات، ولا أريد إزعاج طبيبي بزيارة أخرى.»",
+  prompt:"اكتب كيف توازنين بين رغبتها وسلامتها في موقف متعدد الاعتبارات.",
+  grayNote:"لا يوجد رد واحد جاهز — بل موازنة بين احترام رغبتها في تجنّب زيارة إضافية، وخطر حقيقي لا يُرى الآن لكنه يتكوّن قبل الحمل. المهارة أن تحرّكيها نحو المراجعة دون تنفير ولا تهوين.",
+  model:"لا أصرف مجرد مكمّل وأتركها، ولا أخيفها فأفقدها. أوضّح بهدوء أن هذه اللحظة قبل الحمل تحديدًا هي الأثمن، لأن بعض مضادات الصرع ترتبط بخطر تشوهات جنينية وتستدعي مراجعة الخيار العلاجي قبل الحمل لا بعده، وأنها تحتاج جرعة حمض فوليك أعلى بكثير من المكملات التجارية. أتفهّم عدم رغبتها بزيارة إضافية، لكن أضع لها الأمر في إطاره: زيارة واحدة الآن قد توفّر عليها ما لا يُعوّض لاحقًا. أعرض المساعدة في تسهيل التواصل مع طبيبها بدل زيارة كاملة إن أمكن. الموازنة هنا ألا تتركيها لتصرّف خاطئ حرصًا على راحتها، ولا تفرضي عليها قرارًا يجعلها تنسحب.",
+  keys:["إدراك أن ما قبل الحمل هو نافذة التدخل الأثمن","الحاجة لجرعة حمض فوليك أعلى وتقييم الدواء نفسه","تحريكها نحو المراجعة دون تنفير ولا تهوين"],
+  golden:"قبل الحمل تحديدًا يجب أن يراجع طبيبك نوع الدواء وجرعة حمض الفوليك، وزيارة واحدة الآن قد توفّر عليك الكثير لاحقًا."},
+
+/* ===== DERMATOLOGY & SKIN CARE — 5 ===== */
+{ id:"dm1", sys:"Dermatology & Skin Care", kind:"construct", title:"كريم مركّب على الوجه", who:"مراجعة تستخدم كريمًا مركّبًا",
+  text:"«أستخدم هذا الكريم على وجهي منذ شهرين وبشرتي فاتحة وناعمة، لكن ظهرت شعيرات حمراء وصار جلدي يحترق من الشمس بسرعة.»",
+  prompt:"اكتب كيف تتصرّفين مع هذه المراجعة.",
+  model:"أوضّح أن الشعيرات الحمراء وزيادة حساسية الشمس علامات ترقّق الجلد من الستيرويد في الكريم، خصوصًا على الوجه. لا أنصح بإيقاف فوري لأن التوقف المفاجئ بعد شهرين يسبب التهاب جلد ارتدادي شديد يعيدها للاستخدام، بل بإيقاف متدرّج بإشراف طبي، مع واقي شمس فوري. لا أقترح تقليله للحفاظ على النتيجة لأن الهدف علاجي محدد المدة لا تفتيح دائم.",
+  keys:["قراءة العلامات كترقّق من الستيرويد","الإيقاف المتدرّج بإشراف لتفادي الارتداد","واقي الشمس الفوري وعدم إبقائه للتفتيح"],
+  golden:"الشعيرات الحمراء وحساسية الشمس علامات ترقّق من الستيرويد، وإيقافه يحتاج تدرّجًا بإشراف طبي لتفادي الارتداد."},
+
+{ id:"dm2", sys:"Dermatology & Skin Care", kind:"dialogue", title:"تراكم منتجات العناية", who:"مراجعة تعاني تهيّجًا وجفافًا",
+  text:"«اشتريت روتينًا كاملًا فيه ريتينول وفيتامين سي وحمض الساليسيليك، وأستخدمها كلها صباحًا ومساءً، وبشرتي صارت متهيّجة ومقشّرة.»",
+  prompt:"اكتب أول ما ستوضّحينه لها.",
+  reply:"«لكنني دفعت مبلغًا كبيرًا في هذه المنتجات، فكيف أوقفها كلها؟ ألا يكفي أن أرتّب أوقاتها؟»",
+  replyModel:"أتفهّم قيمة ما دفعته، لكن أوضّح أن المشكلة ليست في المنتجات بل في تراكمها معًا الذي أتلف حاجز بشرتها، وأن ترتيب الأوقات فقط يواصل تعريض بشرة متهيّجة الآن لمواد فعّالة قبل أن تتعافى. المنتجات لن تضيع، بل ستعود إليها واحدة تلو الأخرى بعد أن يتعافى الحاجز. الإيقاف المؤقت يحمي استثمارها لا يهدره.",
+  model:"أوضّح أن جمع هذه الفعّالات معًا يتلف حاجز البشرة، وأقترح إيقاف الجميع مؤقتًا والاكتفاء بمنظف لطيف ومرطب وواقي شمس حتى تتعافى، ثم إعادة إدخال مادة واحدة تدريجيًا لاحقًا.",
+  keys:["ربط التهيّج بتراكم الفعّالات لا بجودتها","الإيقاف المؤقت الكامل ثم الإدخال التدريجي","معالجة قلقها المالي بأن المنتجات لن تُهدر"],
+  golden:"بشرتك متهيّجة من تراكم عدة مواد فعّالة معًا، أوقفيها كلها الآن واكتفي بمنظف لطيف ومرطب وواقي شمس حتى تتعافى."},
+
+{ id:"dm3", sys:"Dermatology & Skin Care", kind:"select", title:"مضاد فطريات لمدة غير كافية", who:"مراجع يعالج فطريات القدم",
+  text:"«استخدمت كريم الفطريات أسبوعًا واختفت الحكة والتقشّر فأوقفته، لكن المشكلة رجعت بعد أسبوعين أشد من قبل.»",
+  prompt:"اختر التصرّف الأقرب، ثم اقرأ التحليل.",
+  choices:[
+    {t:"أوضح أن العلاج يستمر أسبوعين بعد اختفاء الأعراض، وأراجع تجفيف القدم والجوارب والحذاء لمنع التكرار", type:"correct",
+     head:"القرار الأمثل", why:"اختفاء الأعراض يسبق القضاء على الفطر، والإيقاف عندها سبب الانتكاس الأول. ومعالجة البيئة الرطبة والأحذية ضرورية وإلا تكررت العدوى مهما طال العلاج."},
+    {t:"أنصحه بإعادة العلاج لأربعة أسابيع كاملة هذه المرة", type:"weak",
+     head:"صحيح يغفل المصدر", why:"إطالة المدة تصحيح ضروري، لكن إغفال الحذاء والجوارب يبقي مصدر إعادة التلقيح فيتكرر السيناريو."},
+    {t:"أقترح الانتقال لمضاد فطريات فموي", type:"trap",
+     head:"تصعيد بلا مبرر", why:"الفموي يحمل عبئًا كبديًا وتداخلات، ولا يُلجأ إليه لأن الموضعي أُوقف مبكرًا، فالفشل في المدة لا في الشكل."},
+    {t:"أسأله عن إصابة الأظافر كمصدر تكرار", type:"weak",
+     head:"احتمال مهم ليس الأرجح", why:"فطريات الأظافر مصدر معروف للتكرار ويستحق الاستقصاء، لكن إيقاف العلاج بعد أسبوع تفسير أوضح وأقرب."}
+  ],
+  golden:"استمر على الكريم أسبوعين بعد اختفاء الأعراض، واحرص على تجفيف قدميك وتغيير الجوارب لمنع عودة العدوى."},
+
+{ id:"dm4", sys:"Dermatology & Skin Care", kind:"construct", title:"واقي الشمس وطريقة الاستخدام", who:"مراجعة تعاني تصبغات",
+  text:"«أستخدم واقي شمس بمعامل خمسين كل صباح قبل الخروج، ورغم ذلك التصبغات تزداد ولا تتحسن مع كريم التفتيح.»",
+  prompt:"اكتب كيف تتصرّفين معها.",
+  model:"لا أكتفي برفع المعامل. أوضّح أن معظم الناس يضعون أقل من ثلث الكمية اللازمة وأن الحماية تسقط بعد ساعتين، فأشدّد على الكمية الكافية وإعادة التطبيق كل ساعتين عند التعرّض. وفي التصبغات تحديدًا يسهم الضوء المرئي في التحفيز، لذا أُرشدها لواقٍ يحمي منه أيضًا. تصحيح استخدام الواقي هو الأساس الذي بدونه لن ينجح أي علاج تفتيح.",
+  keys:["التركيز على الكمية الكافية وإعادة التطبيق","دور الضوء المرئي في التصبغات","أن تصحيح الواقي أساس نجاح التفتيح، لا رفع المعامل"],
+  golden:"فعالية واقي الشمس تعتمد على الكمية الكافية وإعادة التطبيق كل ساعتين، ومع التصبغات يُفضّل نوع يحمي من الضوء المرئي."},
+
+{ id:"dm5", sys:"Dermatology & Skin Care", kind:"gray", title:"علاج حب الشباب في الحمل", who:"مراجعة حامل تطلب علاجًا",
+  text:"«أنا حامل في الشهر الرابع وحب الشباب ازداد كثيرًا وأثّر على نفسيتي، وأريد نفس الكريم الذي كان ممتازًا معي قبل الحمل، ولا أستطيع تحمّل كلفة طبيب جلدية الآن.»",
+  prompt:"اكتب كيف توازنين بين حاجتها النفسية وكلفتها وسلامة حملها.",
+  grayNote:"تتزاحم هنا ثلاثة اعتبارات: أثر نفسي حقيقي، قيد مالي، وسلامة جنين. لا حل مثاليًا يرضيها كلها فورًا، والمهارة أن تؤمّني السلامة أولًا دون أن تتركيها بلا أي حل.",
+  model:"أبدأ بمعرفة اسم الكريم بالضبط، فبعض علاجات حب الشباب كالريتينويدات الموضعية تُتجنّب في الحمل احتياطًا، وهذا خط لا أتجاوزه مهما كان دافعها. لكنني لا أتركها بلا حل: أتفهّم أثره النفسي وقيدها المالي، فأقترح بدائل مقبولة في الحمل ومتاحة دون كلفة طبيب جلدية الآن، كروتين لطيف ومكوّنات آمنة، مع توضيح أن هذا حل جسر حتى تتمكن من مراجعة مختصة. لا أصرف كريمها القديم لأن ضآلة الامتصاص الجهازي لا تعني الأمان مع هذه الفئة، ولا أتركها محبطة بلا بديل فتلجأ لاستخدامه سرًا. الموازنة أن أحمي الجنين وأعطيها في الوقت نفسه مسارًا واقعيًا تشعر معه أنها لم تُترك.",
+  keys:["معرفة اسم الكريم وتجنّب الفئات الممنوعة في الحمل مهما كان الدافع","تقديم بديل واقعي منخفض الكلفة كحل جسر","عدم تركها محبطة بلا مسار فتستخدم الممنوع سرًا"],
+  golden:"أخبريني اسم الكريم بالضبط، فبعض العلاجات تُتجنّب في الحمل، ولدينا بدائل آمنة وميسورة نبدأ بها حتى تراجعي مختصة."}
+];
+/* ============ STATE ============ */
+const STORAGE_PREFIX = "systrainer:v1:";      /* per-answer records (committee) */
+const PROGRESS_PREFIX = "systrainer:prog:";   /* per-student progress */
+const GATE_CODE = "2580";
+const T_NORMAL = 35, T_WRITE = 120;
+const DAILY_QUOTA = 5;                          /* مواقف في اليوم */
+const TOTAL = 25;
+let student = {name:"", stage:"", key:""}, sessionId = "";
+let useTimer = false;
+let order = [], reviewItems = [];              /* order = today's scenario indices */
+let dayIndex = 0;                               /* position within today's quota */
+let progress = null;                            /* {doneIds:[], order:[], lastDay:"YYYY-MM-DD", doneToday:0} */
+let timer = null, timeLeft = 0;
+let curDraft = "", curReply = "", curSelf = null, curChoiceType = null;
+
+function todayStr(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function normName(s){
+  return String(s||'').trim().replace(/\s+/g,' ')
+    .replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/ؤ/g,'و').replace(/ئ/g,'ي');
+}
+function studentKey(name,stage){ return normName(name)+'|'+stage; }
+
+function goTo(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  if(id==='committee') loadCommittee();
+  if(id==='gate'){ document.getElementById('gateErr').style.display='none'; document.getElementById('gateInput').value=''; }
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function checkGate(){ if(document.getElementById('gateInput').value.trim()===GATE_CODE) goTo('committee'); else document.getElementById('gateErr').style.display='block'; }
+
+async function beginSession(){
+  const name=document.getElementById('fName').value.trim();
+  const stage=document.getElementById('fStage').value;
+  let ok=true;
+  document.getElementById('errName').style.display='none';
+  document.getElementById('errStage').style.display='none';
+  if(name.split(/\s+/).filter(Boolean).length<3){document.getElementById('errName').style.display='block';ok=false;}
+  if(!stage){document.getElementById('errStage').style.display='block';ok=false;}
+  if(!ok) return;
+  student={name,stage,key:studentKey(name,stage)};
+  useTimer=document.getElementById('timerToggle').checked;
+  sessionId=Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+  reviewItems=[];
+
+  await loadProgress();
+
+  // fixed shuffled order stored once per student, so day-to-day is consistent
+  if(!progress.order || progress.order.length!==TOTAL){
+    progress.order=SCENARIOS.map((_,i)=>i).sort(()=>Math.random()-0.5);
+  }
+  // reset daily counter if it is a new calendar day
+  if(progress.lastDay!==todayStr()){ progress.lastDay=todayStr(); progress.doneToday=0; }
+
+  // all finished?
+  if(progress.doneIds.length>=TOTAL){ saveProgress(); showAllDone(); return; }
+  // today's quota already met?
+  if(progress.doneToday>=DAILY_QUOTA){ saveProgress(); showDayDone(); return; }
+
+  saveProgress();
+  buildTodayQueue();
+  dayIndex=0;
+  if(order.length===0){ showDayDone(); return; }
+  goTo('play'); renderDots(); loadScenario();
+}
+
+function buildTodayQueue(){
+  // remaining (not-done) scenario indices, in the student's fixed order
+  const remaining = progress.order.filter(i=> !progress.doneIds.includes(SCENARIOS[i].id));
+  const slotsLeft = DAILY_QUOTA - progress.doneToday;
+  order = remaining.slice(0, slotsLeft);
+}
+
+async function loadProgress(){
+  try{
+    const r=await window.storage.get(PROGRESS_PREFIX+student.key, true);
+    if(r && r.value){ progress=JSON.parse(r.value); }
+  }catch(e){ /* not found */ }
+  if(!progress) progress={ name:student.name, stage:student.stage, doneIds:[], order:null, lastDay:todayStr(), doneToday:0 };
+  if(!progress.doneIds) progress.doneIds=[];
+}
+async function saveWithRetry(key, value, tries){
+  tries = tries || 3;
+  for(let i=0;i<tries;i++){
+    try{ const r=await window.storage.set(key, value, true); if(r!==null && r!==undefined) return true; }
+    catch(e){ /* transient server error; retry */ }
+    await new Promise(res=>setTimeout(res, 400*(i+1)));
+  }
+  return false;
+}
+async function saveProgress(){
+  // mirror locally in-memory so the session never blocks on storage
+  window._progMirror = JSON.parse(JSON.stringify(progress));
+  await saveWithRetry(PROGRESS_PREFIX+student.key, JSON.stringify(progress));
+}
+
+function renderDots(){
+  const d=document.getElementById('dots'); d.innerHTML='';
+  for(let i=0;i<order.length;i++){const el=document.createElement('div');el.className='dot'+(i<dayIndex?' filled':'');d.appendChild(el);}
+}
+
+const KIND_LABEL={construct:"اكتب أولًا ثم قارن",select:"اختر ثم حلّل",dialogue:"حوار متدرّج",gray:"لا إجابة وحيدة"};
+
+function loadScenario(){
+  const s=SCENARIOS[order[dayIndex]];
+  curDraft=""; curReply=""; curSelf=null; curChoiceType=null;
+  const overallDone=progress.doneIds.length;
+  document.getElementById('stepBadge').textContent=`موقف اليوم ${dayIndex+1}/${order.length} · الإجمالي ${overallDone+1}/${TOTAL}`;
+  const kb=document.getElementById('kindBadge');
+  kb.textContent=KIND_LABEL[s.kind]; kb.className='kind-badge '+s.kind;
+  document.getElementById('formTitle').textContent=s.title;
+  const stEl=document.getElementById('sysTagPlay'); if(stEl) stEl.textContent=s.sys;
+  document.getElementById('bubbleWho').textContent='المراجع';
+  document.getElementById('bubbleText').textContent=s.text;
+  document.getElementById('promptQ').textContent=s.prompt||'كيف تتصرّف؟';
+
+  document.getElementById('stageInput').style.display='block';
+  document.getElementById('stageDialogue').style.display='none';
+  document.getElementById('stageReveal').style.display='none';
+  document.getElementById('draftBox').style.display='none';
+  document.getElementById('choicesBox').style.display='none';
+  document.getElementById('draftText').value='';
+  document.getElementById('replyDraft').value='';
+  document.getElementById('nextBtn').style.display='none';
+  document.getElementById('selfCheckWrap').style.display='none';
+
+  if(s.kind==='select'){
+    const box=document.getElementById('choicesBox'); box.style.display='flex'; box.innerHTML='';
+    s.choices.map((c,i)=>({c,i})).sort(()=>Math.random()-0.5).forEach(({c,i})=>{
+      const b=document.createElement('button'); b.className='choice'; b.textContent=c.t;
+      b.onclick=()=>pickChoice(i); box.appendChild(b);
+    });
+  } else {
+    document.getElementById('draftBox').style.display='block';
+  }
+  renderDots();
+  if(useTimer) startTimer(T_NORMAL, ()=>autoAdvanceFromInput());
+  else stopTimer();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+function startTimer(sec, onEnd){
+  stopTimer();
+  timeLeft=sec;
+  const el=document.getElementById('timerLive');
+  el.classList.add('on'); el.textContent='⏱ '+timeLeft;
+  timer=setInterval(()=>{
+    timeLeft--;
+    el.textContent='⏱ '+Math.max(timeLeft,0);
+    if(timeLeft<=0){stopTimer(); if(onEnd) onEnd();}
+  },1000);
+}
+function stopTimer(){ clearInterval(timer); document.getElementById('timerLive').classList.remove('on'); }
+
+function autoAdvanceFromInput(){
+  const s=SCENARIOS[order[dayIndex]];
+  if(s.kind==='select'){ /* let them still choose; just stop timer */ }
+  else { curDraft=document.getElementById('draftText').value.trim(); goReveal(); }
+}
+
+/* CONSTRUCT / GRAY */
+function submitDraft(){
+  stopTimer();
+  curDraft=document.getElementById('draftText').value.trim();
+  const s=SCENARIOS[order[dayIndex]];
+  if(s.kind==='dialogue'){ enterDialogue(); }
+  else { goReveal(); }
+}
+
+/* SELECT */
+function pickChoice(idx){
+  stopTimer();
+  const s=SCENARIOS[order[dayIndex]];
+  curChoiceType=s.choices[idx].type;
+  curDraft='[اختيار] '+s.choices[idx].t;
+  window._chosenIdx=idx;
+  goReveal();
+}
+
+/* DIALOGUE */
+function enterDialogue(){
+  const s=SCENARIOS[order[dayIndex]];
+  document.getElementById('stageInput').style.display='none';
+  document.getElementById('stageDialogue').style.display='block';
+  document.getElementById('replyWho').textContent='المراجع يعترض';
+  document.getElementById('replyText').textContent=s.reply;
+  if(useTimer) startTimer(T_WRITE, ()=>{curReply=document.getElementById('replyDraft').value.trim(); goReveal();});
+  window.scrollTo({top:document.getElementById('stageDialogue').offsetTop-20,behavior:'smooth'});
+  setTimeout(()=>document.getElementById('replyDraft').focus(),150);
+}
+function submitReply(){
+  stopTimer();
+  curReply=document.getElementById('replyDraft').value.trim();
+  goReveal();
+}
+
+/* REVEAL */
+function goReveal(){
+  stopTimer();
+  const s=SCENARIOS[order[dayIndex]];
+  document.getElementById('stageInput').style.display='none';
+  document.getElementById('stageDialogue').style.display='none';
+  const rt=document.getElementById('revealTop');
+  const rb=document.getElementById('revealBody');
+  rt.innerHTML=''; rb.innerHTML='';
+
+  // show what they wrote (construct/gray/dialogue)
+  if(s.kind!=='select' && curDraft){
+    rt.innerHTML+=`<div class="your-draft"><span class="lbl">استجابتك التي كتبتها</span>${escapeHtml(curDraft)}</div>`;
+  }
+  if(s.kind==='dialogue' && curReply){
+    rt.innerHTML+=`<div class="your-draft"><span class="lbl">ردّك على اعتراض المراجع</span>${escapeHtml(curReply)}</div>`;
+  }
+
+  if(s.kind==='select'){
+    const idx=window._chosenIdx;
+    rb.innerHTML+=`<div class="section-label">تحليل جميع الخيارات</div><div class="reveal-wrap" id="rl"></div>`;
+    const list=rb.querySelector('#rl');
+    const map={correct:'الأمثل',weak:'ناقص',trap:'خاطئ'};
+    s.choices.forEach((c,i)=>{
+      const d=document.createElement('div');
+      d.className='rev '+c.type+(i===idx?' chosen':'');
+      d.innerHTML=`<div class="head"><span class="tick">${map[c.type]}</span><span>${escapeHtml(c.head)}</span>${i===idx?'<span class="mine">اختيارك</span>':''}</div><div style="font-size:13.5px;font-weight:600;margin-bottom:6px;opacity:.85;">${escapeHtml(c.t)}</div><div>${escapeHtml(c.why)}</div>`;
+      list.appendChild(d);
+    });
+  } else {
+    // construct / dialogue / gray: show model answer
+    if(s.kind==='dialogue' && s.replyModel){
+      rb.innerHTML+=`<div class="section-label">كيف يردّ صيدلاني خبير على الاعتراض</div><div class="model-box">${escapeHtml(s.replyModel)}</div>`;
+    }
+    rb.innerHTML+=`<div class="section-label">${s.kind==='gray'?'كيف يوازن صيدلاني خبير':'كيف يتصرّف صيدلاني خبير'}</div><div class="model-box"><span class="lbl">النموذج</span>${escapeHtml(s.model)}</div>`;
+    if(s.keys && s.keys.length){
+      let k='<div class="section-label">النقاط الجوهرية التي قارن استجابتك بها</div><div class="model-box" style="background:var(--sage);border-color:var(--pharmacy-green);"><ul style="margin:0;padding-right:18px;line-height:1.9;font-size:13.8px;">';
+      s.keys.forEach(x=>k+=`<li>${escapeHtml(x)}</li>`);
+      k+='</ul></div>';
+      rb.innerHTML+=k;
+    }
+  }
+
+  // golden or gray note
+  if(s.kind==='gray'){
+    rb.innerHTML+=`<div class="gray-note"><span class="lbl">لماذا لا توجد إجابة وحيدة</span>${escapeHtml(s.grayNote)}</div>`;
+  }
+  rb.innerHTML+=`<div class="golden"><span class="lbl">الجملة الذهبية</span>${escapeHtml(s.golden)}</div>`;
+
+  document.getElementById('stageReveal').style.display='block';
+
+  // self-check only for written kinds
+  if(s.kind!=='select'){
+    document.getElementById('selfCheckWrap').style.display='block';
+    document.getElementById('nextBtn').style.display='none';
+    document.querySelectorAll('#selfCheckWrap .sc-btn').forEach(b=>b.classList.remove('picked'));
+  } else {
+    document.getElementById('nextBtn').style.display='block';
+    recordScenario(null);
+  }
+  const isLastOverall = (progress.doneIds.length+1)>=TOTAL;
+  const isLastToday = dayIndex>=order.length-1;
+  document.getElementById('nextBtn').textContent = isLastOverall ? 'إنهاء التدريب' : (isLastToday ? 'إنهاء حصة اليوم' : 'الموقف التالي');
+  window.scrollTo({top:document.getElementById('stageReveal').offsetTop-20,behavior:'smooth'});
+}
+
+function pickSelf(val, el){
+  curSelf=val;
+  document.querySelectorAll('#selfCheckWrap .sc-btn').forEach(b=>b.classList.remove('picked'));
+  el.classList.add('picked');
+  document.getElementById('nextBtn').style.display='block';
+  recordScenario(val);
+}
+
+function recordScenario(selfVal){
+  const s=SCENARIOS[order[dayIndex]];
+  if(s.kind!=='select'){ reviewItems.push({title:s.title, golden:s.golden}); }
+  else if(curChoiceType && curChoiceType!=='correct'){ reviewItems.push({title:s.title, golden:s.golden}); }
+  // send answer to committee immediately (day-by-day)
+  record(s.id, s.kind, curChoiceType, curDraft, curReply, selfVal);
+  // update this student's progress: mark done, bump daily counter, persist now
+  if(!progress.doneIds.includes(s.id)){ progress.doneIds.push(s.id); progress.doneToday++; }
+  saveProgress();
+}
+
+function nextScenario(){
+  dayIndex++;
+  if(progress.doneIds.length>=TOTAL){ finishAll(); return; }
+  if(dayIndex>=order.length){ finishDay(); return; }
+  loadScenario();
+}
+
+async function record(scenarioId,kind,choiceType,draft,reply,selfVal){
+  try{
+    const key=STORAGE_PREFIX+Date.now()+'-'+Math.random().toString(36).slice(2,8);
+    await saveWithRetry(key, JSON.stringify({
+      sid:sessionId,name:student.name,stage:student.stage,
+      scenarioId,kind,choiceType:choiceType||null,
+      draft:draft||null,reply:reply||null,self:selfVal||null,
+      timed:useTimer,ts:Date.now()
+    }));
+  }catch(e){ /* transient; answer will still be reflected in the student's local progress */ }
+}
+
+function renderReview(){
+  const list=document.getElementById('reviewList'); list.innerHTML='';
+  if(!reviewItems.length){
+    list.innerHTML=`<div class="review-card"><span class="lbl">ملاحظة</span>تصرّفت بثقة في مواقف اليوم. عُد إليها لاحقًا لترى إن بقي أداؤك ثابتًا.</div>`;
+  } else {
+    reviewItems.forEach(it=>{
+      const el=document.createElement('div'); el.className='review-card';
+      el.innerHTML=`<span class="lbl">${escapeHtml(it.title)}</span>${escapeHtml(it.golden)}`;
+      list.appendChild(el);
+    });
+  }
+}
+
+/* finished today's quota, but more days remain */
+function finishDay(){
+  stopTimer(); goTo('summary');
+  const remaining = TOTAL - progress.doneIds.length;
+  document.getElementById('sumIcon').textContent='🌙';
+  document.getElementById('sumLine').textContent='أنجزت مواقف اليوم';
+  document.getElementById('sumText').textContent=`أكملت حصة اليوم (${order.length} مواقف). بقي لديك ${remaining} موقفًا. عُد غدًا لإكمالها — إجاباتك محفوظة وستُكمل من حيث توقفت.`;
+  document.getElementById('sumRestartBtn').style.display='none';
+  renderReview();
+}
+
+/* finished ALL scenarios */
+function finishAll(){
+  stopTimer(); goTo('summary');
+  document.getElementById('sumIcon').textContent='🎓';
+  document.getElementById('sumLine').textContent='أكملت التدريب كاملًا';
+  document.getElementById('sumText').textContent=`أنهيت جميع مواقف التدريب على مدى الأيام. هذه أبرز المواقف التي تستحق أن تعود إليها للمراجعة.`;
+  document.getElementById('sumRestartBtn').style.display='none';
+  renderReview();
+}
+
+/* opened when quota already met for today (no new scenarios played) */
+function showDayDone(){
+  goTo('summary');
+  const remaining = TOTAL - progress.doneIds.length;
+  document.getElementById('reviewList').innerHTML='';
+  document.getElementById('sumIcon').textContent='🌙';
+  document.getElementById('sumLine').textContent='أكملت حصة اليوم';
+  document.getElementById('sumText').textContent=`لقد أنجزت مواقف اليوم مسبقًا. بقي لديك ${remaining} موقفًا، تُفتح غدًا. إجاباتك محفوظة بالكامل.`;
+  document.getElementById('sumRestartBtn').style.display='none';
+}
+
+/* opened when everything already finished */
+function showAllDone(){
+  goTo('summary');
+  document.getElementById('reviewList').innerHTML='';
+  document.getElementById('sumIcon').textContent='🎓';
+  document.getElementById('sumLine').textContent='أكملت التدريب كاملًا';
+  document.getElementById('sumText').textContent='لقد أنهيت جميع مواقف هذا التدريب. شكرًا لالتزامك عبر الأيام.';
+  document.getElementById('sumRestartBtn').style.display='none';
+}
+
+function restartAll(){ goTo('intro'); }
+
+/* ============ COMMITTEE ============ */
+async function loadCommittee(){
+  const body=document.getElementById('committeeBody');
+  body.innerHTML='<div class="empty-state">جارٍ تحميل البيانات...</div>';
+  try{
+    const res=await window.storage.list(STORAGE_PREFIX,true);
+    const keys=(res&&res.keys)?res.keys:[];
+    if(!keys.length){ body.innerHTML='<div class="empty-state">لا توجد بيانات بعد.<br>ستظهر النتائج فور بدء المتدربين باستخدام الأداة.</div>'; return; }
+    const stats={}, sessions=new Set(), stages=new Set(), people={};
+    // load per-student progress records
+    let progRecords=[];
+    try{
+      const pres=await window.storage.list(PROGRESS_PREFIX,true);
+      const pkeys=(pres&&pres.keys)?pres.keys:[];
+      for(const pk of pkeys){ try{ const pr=await window.storage.get(pk,true); if(pr&&pr.value) progRecords.push(JSON.parse(pr.value)); }catch(e){} }
+    }catch(e){}
+    SCENARIOS.forEach(s=>{ stats[s.id]={total:0, self:{aligned:0,partial:0,off:0}, choice:{correct:0,weak:0,trap:0}, drafts:[], kind:s.kind}; });
+    let totalAnswers=0;
+    for(const k of keys){
+      try{
+        const r=await window.storage.get(k,true); if(!r||!r.value) continue;
+        const d=JSON.parse(r.value); const st=stats[d.scenarioId]; if(!st) continue;
+        st.total++; totalAnswers++;
+        if(d.sid){ sessions.add(d.sid); if(!people[d.sid]) people[d.sid]={name:d.name||'—',stage:d.stage||'—',n:0}; people[d.sid].n++; }
+        if(d.stage) stages.add(d.stage);
+        if(d.self && st.self[d.self]!==undefined) st.self[d.self]++;
+        if(d.choiceType && st.choice[d.choiceType]!==undefined) st.choice[d.choiceType]++;
+        if(d.draft || d.reply) st.drafts.push({name:d.name,stage:d.stage,draft:d.draft,reply:d.reply,self:d.self,ts:d.ts});
+      }catch(e){}
+    }
+    const todayStr_=todayStr();
+    const activeToday=progRecords.filter(p=>p.lastDay===todayStr_ && (p.doneToday||0)>0).length;
+    const completedAll=progRecords.filter(p=>(p.doneIds?p.doneIds.length:0)>=TOTAL).length;
+    let html=`<div class="stat-strip">
+      <div class="stat-box"><div class="n">${progRecords.length||sessions.size}</div><div class="l">عدد المتدربين</div></div>
+      <div class="stat-box"><div class="n">${activeToday}</div><div class="l">نشطون اليوم</div></div>
+      <div class="stat-box"><div class="n">${completedAll}</div><div class="l">أكملوا الكل</div></div>
+      <div class="stat-box"><div class="n">${totalAnswers}</div><div class="l">إجمالي الإجابات</div></div>
+    </div>`;
+
+    const today=todayStr();
+    const doneTodayCount = progRecords.filter(p=>p.lastDay===today && p.doneToday>0).length;
+    if(progRecords.length){
+      const sorted=progRecords.slice().sort((a,b)=>(b.doneIds?b.doneIds.length:0)-(a.doneIds?a.doneIds.length:0));
+      html+=`<div class="roster"><div class="roster-head">سجل المتدربين وتقدّمهم عبر الأيام</div>`;
+      sorted.forEach(p=>{
+        const done=p.doneIds?p.doneIds.length:0;
+        const todayN=(p.lastDay===today)?(p.doneToday||0):0;
+        const finished=done>=TOTAL;
+        const badge= finished ? 'أكمل الكل' : `${done}/${TOTAL} · اليوم ${todayN}`;
+        html+=`<div class="roster-row"><span><span class="who-n">${escapeHtml(p.name||'—')}</span> <span class="st">${escapeHtml(p.stage||'—')}</span></span><span class="sc">${badge}</span></div>`;
+      });
+      html+=`</div>`;
+    }
+
+    let lastSys=null;
+    SCENARIOS.forEach((s,si)=>{
+      const st=stats[s.id]; if(st.total===0) return;
+      if(s.sys!==lastSys){ lastSys=s.sys; html+=`<div class="sys-header">${escapeHtml(s.sys)}</div>`; }
+      const pct=n=>st.total?Math.round((n/st.total)*100):0;
+      html+=`<div class="sc-block"><div class="sc-title">${si+1}. ${escapeHtml(s.title)}</div><div class="sc-meta">${KIND_LABEL[s.kind]} · ${st.total} مشاركة</div>`;
+      if(s.kind==='select'){
+        const map=[['correct','الأمثل','aligned'],['weak','ناقص','partial'],['trap','خاطئ','off']];
+        map.forEach(([key,lbl,cls])=>{
+          const n=st.choice[key];
+          html+=`<div class="opt-row"><div class="opt-label"><span>الخيار ${lbl}</span><span class="cnt">${n} (${pct(n)}%)</span></div><div class="opt-track"><div class="opt-fill ${cls}" style="width:${pct(n)}%"></div></div></div>`;
+        });
+      } else {
+        const map=[['aligned','قرّبوا من النموذج','aligned'],['partial','أصابوا جزئيًا','partial'],['off','فاتهم الجوهر','off']];
+        map.forEach(([key,lbl,cls])=>{
+          const n=st.self[key];
+          html+=`<div class="opt-row"><div class="opt-label"><span>${lbl} <span style="opacity:.5;font-size:11px;">(تقييم ذاتي)</span></span><span class="cnt">${n} (${pct(n)}%)</span></div><div class="opt-track"><div class="opt-fill ${cls}" style="width:${pct(n)}%"></div></div></div>`;
+        });
+        if(st.drafts.length){
+          html+=`<div class="draft-list"><div class="dl-title">ما كتبه المتدربون في هذا الموقف</div>`;
+          st.drafts.slice(0,50).forEach(o=>{
+            const dt=new Date(o.ts);
+            const sj=o.self?`<span class="sj ${o.self}">${o.self==='aligned'?'قريب':o.self==='partial'?'جزئي':'فاته الجوهر'}</span>`:'';
+            let txt=o.draft?escapeHtml(o.draft):'';
+            if(o.reply) txt+=`<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--line);"><span style="font-size:10px;opacity:.6;">ردّه على الاعتراض:</span> ${escapeHtml(o.reply)}</div>`;
+            html+=`<div class="draft-entry"><span class="meta">${escapeHtml(o.name||'—')} · ${escapeHtml(o.stage||'—')} · ${dt.toLocaleDateString('ar-IQ')} ${sj}</span>${txt}</div>`;
+          });
+          html+=`</div>`;
+        }
+      }
+      html+=`</div>`;
+    });
+    body.innerHTML=html;
+  }catch(e){ body.innerHTML='<div class="empty-state">تعذّر تحميل البيانات حاليًا.</div>'; console.error(e); }
+}
+
+function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+</script>
+</body>
+</html>
